@@ -1,12 +1,7 @@
 const mongoose = require('mongoose');
 const requireLogin = require('../middlewares/requireLogin');
-//initialize redis
-const redis = require('redis')
-const redisUrl = 'redis://127.0.0.1:6379'
-const client = redis.createClient(redisUrl)
-//use util (promisify) instead of callback in client.get
-const util = require('util')
-//
+const clearCache = require('../middlewares/clearCache');
+
 const Blog = mongoose.model('Blog');
 
 module.exports = app => {
@@ -20,27 +15,16 @@ module.exports = app => {
   });
 
   app.get('/api/blogs', requireLogin, async (req, res) => {
-
-    client.get = util.promisify(client.get)
-  //Do we have any cached data in redis related to this query?
-    const cachedBlogs = await client.get(req.user.id);
-
-    if(cachedBlogs) {
-      console.log('SERVING FROM CACHE')
-        return res.send(JSON.parse(cachedBlogs))
+    const blogs = await Blog.find({_user:req.user.id})
+        .cache({key: req.user.id
     }
+    )
 
-      const blogs = await Blog.find({ _user: req.user.id });
-      console.log('SERVING FROM MONGO_DB')
-      res.send(blogs);
-      client.set(req.user.id, JSON.stringify(blogs))
-  // if yes, then respond to this request right away from redis cache and return
 
-  // if no, we need to respond to request, and then update our cache to store the data
-
+    res.send(blogs)
   });
 
-  app.post('/api/blogs', requireLogin, async (req, res) => {
+  app.post('/api/blogs', requireLogin, clearCache, async (req, res) => {
     const { title, content } = req.body;
 
     const blog = new Blog({
